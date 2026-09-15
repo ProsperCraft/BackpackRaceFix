@@ -1,0 +1,12 @@
+{
+  "type": "code",
+  "modid": "backpackracefix",
+  "name": "Backpack Race Fix",
+  "authors": ["ProsperCraft"],
+  "description": "Client compatibility fixes for backpack inventory races, Hydrate-or-Diedrate encumbrance scans, duplicate Vintage Rift patches, and login-time GUI teardown.",
+  "version": "1.1.0",
+  "side": "client",
+  "dependencies": {
+    "game": "1.22.7"
+  }
+}
