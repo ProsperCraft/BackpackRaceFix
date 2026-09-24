@@ -15,6 +15,14 @@ public sealed class BackpackRaceFixModSystem : ModSystem
         if (api.Side != EnumAppSide.Client || Harmony.HasAnyPatches(HarmonyId)) return;
 
         harmony = new Harmony(HarmonyId);
+        HotfixDiagnostics.Start(api.Logger);
+        BackpackGridGuard.Install(harmony);
+        BackpackPlacementGuard.Install(harmony);
+        harmony.Patch(
+            AccessTools.DeclaredMethod(typeof(BagInventory), nameof(BagInventory.ReloadBagInventory)),
+            prefix: new HarmonyMethod(typeof(HotfixDiagnostics), nameof(HotfixDiagnostics.ReloadPrefix)),
+            finalizer: new HarmonyMethod(typeof(HotfixDiagnostics), nameof(HotfixDiagnostics.ReloadFinalizer))
+        );
         var bagGetterFinalizer = new HarmonyMethod(
             typeof(BackpackRaceFixModSystem),
             nameof(BagGetterFinalizer)
@@ -69,9 +77,10 @@ public sealed class BackpackRaceFixModSystem : ModSystem
         }
     }
 
-    private static Exception? BagGetterFinalizer(Exception? __exception, ref ItemSlot? __result)
+    private static Exception? BagGetterFinalizer(BagInventory __instance, int slotId, Exception? __exception, ref ItemSlot? __result)
     {
         if (__exception is not ArgumentOutOfRangeException) return __exception;
+        HotfixDiagnostics.BagFailure(__instance, slotId, __exception);
 
         // The outer backpack getter (including XSkills' extra-slot mapping) stays
         // intact. Only suppress a stale index into the live inner bag list.
@@ -81,6 +90,8 @@ public sealed class BackpackRaceFixModSystem : ModSystem
 
     private static Exception? ThirstInventoryScanFinalizer(Exception? __exception)
     {
+        if (__exception is ArgumentOutOfRangeException)
+            HotfixDiagnostics.Report("thirst-scan", "Suppressed encumbrance scan failure", __exception);
         // Hydrate-or-Diedrate scans the backpack periodically for liquid weight.
         // A synchronized bag resize can invalidate that scan; defer it one tick.
         return __exception is ArgumentOutOfRangeException ? null : __exception;
@@ -88,6 +99,8 @@ public sealed class BackpackRaceFixModSystem : ModSystem
 
     private static Exception? GuiComposerPostRenderFinalizer(Exception? __exception)
     {
+        if (__exception is NullReferenceException)
+            HotfixDiagnostics.Report("gui-postrender", "Suppressed GUI PostRender failure; cause unconfirmed", __exception);
         // A composer or one of its interactive elements can be torn down while
         // the login/reconnect frame is still finalizing. Dropping that one frame
         // is safer than terminating the client; unrelated exceptions still flow.
@@ -103,7 +116,9 @@ public sealed class BackpackRaceFixModSystem : ModSystem
             "TabletopGames.CollectibleBehaviorChiseledPieceToolModes:SetToolMode"
         );
 
-        return setToolMode == null || Harmony.GetPatchInfo(setToolMode)?.Owners.Contains(harmonyId) != true;
+        bool runStart = setToolMode == null || Harmony.GetPatchInfo(setToolMode)?.Owners.Contains(harmonyId) != true;
+        if (!runStart) HotfixDiagnostics.Report("rift-start", "Skipped duplicate Vintage Rift Start", null);
+        return runStart;
     }
 
     public override void Dispose()
